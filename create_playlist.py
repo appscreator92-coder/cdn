@@ -172,7 +172,7 @@ referer_url = "https://edge.cdn-live.ru/"
 channels_data = get_online_channels(referer_url)
 
 if channels_data:
-    with open("siamcdnplaylist.m3u", "w", encoding='utf-8') as f:
+    with open("playlist.m3u", "w", encoding='utf-8') as f:
         f.write('#EXTM3U x-tvg-url="https://github.com/epgshare01/share/raw/master/epg_ripper_ALL_SOURCES1.xml.gz"\n')
         for channel in channels_data:
             print(f"Processing {channel.get('name')}...")
