@@ -2,22 +2,22 @@ name: Update M3U Playlist
 
 on:
   schedule:
-    - cron: '*/01 * * * *' 
-  workflow_dispatch:     
+    - cron: '*/10 * * * *'  # প্রতি 40 মিনিটে রান করার কমান্ড
+  workflow_dispatch:      # ম্যানুয়ালি রান করার অপশন
 
 jobs:
   update-playlist:
     runs-on: ubuntu-latest
-    timeout-minutes: 10 
+    timeout-minutes: 10   # সময় একটু বাড়িয়ে দেওয়া হয়েছে
 
     permissions:
-      contents: write   
+      contents: write     # ফাইল পুশ করার জন্য পারমিশন
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  
+          fetch-depth: 0   # পুরো হিস্ট্রি নেওয়ার জন্য
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -39,6 +39,6 @@ jobs:
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: "Auto update playlist: ${{ github.run_id }}"
-          file_pattern: 'playlist.m3u' 
-          skip_dirty_check: false   
-          
+          file_pattern: 'playlist.m3u' # আপনার ফাইলের নাম নিশ্চিত করুন
+          skip_dirty_check: false    # যদি ফাইলে কোনো পরিবর্তন না আসে তবে পুশ হবে না
+          commit_author: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
