@@ -1,6 +1,6 @@
 
 // The URL of your raw M3U playlist on GitHub.
-const M3U_URL = 'https://raw.githubusercontent.com/siam3310/cdn-tv/refs/heads/main/siamcdnplaylist.m3u';
+const M3U_URL = 'https://raw.githubusercontent.com/appscreator92-coder/cdn/refs/heads/main/playlist.m3u';
 
 // This is a Vercel Serverless Function.
 // It will be accessible at the /api/proxy endpoint.
