@@ -1,4 +1,4 @@
-const M3U_URL = 'https://raw.githubusercontent.com/appscreator92-coder/spor/refs/heads/main/SPORTS.m3u';
+const M3U_URL = 'https://raw.githubusercontent.com/appscreator92-coder/cdn/refs/heads/main/playlist.m3u';
 
 module.exports = async (req, res) => {
     // 1. ALWAYS set CORS headers immediately at response start
