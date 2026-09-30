@@ -1,6 +1,6 @@
 
 // The URL of your raw M3U playlist on GitHub.
-const M3U_URL = 'https://raw.githubusercontent.com/appscreator92-coder/cdn/refs/heads/main/playlist.m3u';
+const M3U_URL = 'https://raw.githubusercontent.com/appscreator92-coder/spor/refs/heads/main/SPORTS.m3u';
 
 // This is a Vercel Serverless Function.
 // It will be accessible at the /api/proxy endpoint.
@@ -62,7 +62,7 @@ module.exports = async (req, res) => {
         // --- 2. Proxy Request: Fetch the stream and send it to the client ---
         if (url) {
             const headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36',
             };
             if (referer) {
                 headers['Referer'] = referer;
