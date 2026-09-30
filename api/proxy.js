@@ -1,30 +1,27 @@
-const M3U_URL = 'https://raw.githubusercontent.com/appscreator92-coder/cdn/refs/heads/main/playlist.m3u';
 
+// The URL of your raw M3U playlist on GitHub.
+const M3U_URL = 'https://raw.githubusercontent.com/appscreator92-coder/spor/refs/heads/main/SPORTS.m3u';
+
+// This is a Vercel Serverless Function.
+// It will be accessible at the /api/proxy endpoint.
 module.exports = async (req, res) => {
-    // 1. ALWAYS set CORS headers immediately at response start
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', '*');
-
-    if (req.method === 'OPTIONS') {
-        return res.status(200).end();
-    }
-
+    // Get query parameters from the request URL.
     const { channel, url, referer } = req.query;
 
     try {
-        // --- A. Channel Request Handler ---
+        // --- 1. Channel Request: Find the stream and redirect to the proxy ---
         if (channel) {
             const m3uResponse = await fetch(M3U_URL);
             if (!m3uResponse.ok) {
-                return res.status(502).send('Error: Could not fetch M3U playlist from GitHub.');
+                return res.status(502).send('Error: Could not fetch the main playlist from GitHub.');
             }
             const m3uText = await m3uResponse.text();
+
             const lines = m3uText.split(/\r\n|\n|\r/);
-            
             let streamUrl = '';
             let streamReferer = '';
 
+            // Find the channel info in the playlist.
             for (let i = 0; i < lines.length; i++) {
                 const line = lines[i].trim();
                 if (line.startsWith('#EXTINF:')) {
@@ -32,14 +29,13 @@ module.exports = async (req, res) => {
                     const namePart = parts[parts.length - 1].trim();
 
                     if (namePart.toLowerCase() === channel.toLowerCase()) {
-                        for (let j = i + 1; j < i + 5; j++) {
+                        for (let j = i + 1; j < i + 3; j++) {
                             if (!lines[j]) continue;
                             const nextLine = lines[j].trim();
                             if (nextLine.startsWith('#EXTVLCOPT:http-referrer=')) {
                                 streamReferer = nextLine.replace('#EXTVLCOPT:http-referrer=', '');
-                            } else if (nextLine.startsWith('http://') || nextLine.startsWith('https://')) {
+                            } else if (nextLine.startsWith('http')) {
                                 streamUrl = nextLine;
-                                break;
                             }
                         }
                         if (streamUrl) break;
@@ -51,95 +47,91 @@ module.exports = async (req, res) => {
                 return res.status(404).send(`Error: Channel "${channel}" not found.`);
             }
 
-            const host = req.headers.host;
-            const protocol = req.headers['x-forwarded-proto'] || 'https';
-            const proxyRedirectUrl = new URL(`${protocol}://${host}${req.url.split('?')[0]}`);
-            
+            // Build the redirect URL pointing back to this same serverless function.
+            const proxyRedirectUrl = new URL(req.url, `https://${req.headers.host}`);
+            proxyRedirectUrl.search = ''; // Clear existing query params
             proxyRedirectUrl.searchParams.set('url', streamUrl);
             if (streamReferer) {
                 proxyRedirectUrl.searchParams.set('referer', streamReferer);
             }
 
+            // Redirect the client to the proxy handler below.
             return res.redirect(302, proxyRedirectUrl.toString());
         }
 
-        // --- B. Direct Proxy Handler ---
+        // --- 2. Proxy Request: Fetch the stream and send it to the client ---
         if (url) {
-            const targetUrl = decodeURIComponent(url);
-            const targetReferer = referer ? decodeURIComponent(referer) : 'https://cdnlivetv.tv/';
-            
-            let targetOrigin = 'https://cdnlivetv.tv';
-            try {
-                targetOrigin = new URL(targetReferer).origin;
-            } catch (e) {}
-
-            // Pass headers to pass through anti-hotlinking checks
             const headers = {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Referer': targetReferer,
-                'Origin': targetOrigin,
-                'Accept': '*/*',
-                'Accept-Language': 'en-US,en;q=0.9',
-                'Sec-Fetch-Dest': 'empty',
-                'Sec-Fetch-Mode': 'cors',
-                'Sec-Fetch-Site': 'cross-site'
             };
-
-            const targetResponse = await fetch(targetUrl, { headers });
-
-            if (!targetResponse.ok) {
-                return res.status(targetResponse.status).send(`Upstream stream returned status ${targetResponse.status}`);
+            if (referer) {
+                headers['Referer'] = referer;
             }
 
-            // Copy content headers safely
+            const targetResponse = await fetch(url, { headers });
+
+            // Set CORS headers to allow the video player to access the stream.
+            res.setHeader('Access-Control-Allow-Origin', '*');
+            res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+            res.setHeader('Access-Control-Allow-Headers', '*');
+
+            // Pass through headers from the target stream (like Content-Type).
             targetResponse.headers.forEach((value, name) => {
-                const lowerName = name.toLowerCase();
-                if (!['content-encoding', 'transfer-encoding', 'access-control-allow-origin', 'access-control-allow-methods', 'access-control-allow-headers'].includes(lowerName)) {
+                // Let Vercel handle compression and transfer-encoding.
+                if (!['content-encoding', 'transfer-encoding', 'access-control-allow-origin', 'access-control-allow-methods', 'access-control-allow-headers'].includes(name.toLowerCase())) {
                     res.setHeader(name, value);
                 }
             });
 
             const contentType = targetResponse.headers.get('content-type') || '';
-            const isM3U8 = targetUrl.includes('.m3u8') || contentType.includes('mpegurl') || contentType.includes('m3u');
 
-            // Handle M3U8 Playlist rewriting
-            if (isM3U8) {
+            // If it's a playlist, rewrite the URLs inside it.
+            if (contentType.includes('mpegurl')) {
                 const body = await targetResponse.text();
-                const host = req.headers.host;
-                const protocol = req.headers['x-forwarded-proto'] || 'https';
-                const requestUrl = `${protocol}://${host}${req.url.split('?')[0]}`;
-                
-                const rewrittenBody = rewritePlaylist(body, targetUrl, targetReferer, requestUrl);
-                res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
-                return res.status(200).send(rewrittenBody);
+                const requestUrl = new URL(req.url, `https://${req.headers.host}`).toString();
+                const rewrittenBody = rewritePlaylist(body, url, referer, requestUrl);
+                return res.status(targetResponse.status).send(rewrittenBody);
             }
 
-            // Buffer streaming for video chunks (.ts)
-            const arrayBuffer = await targetResponse.arrayBuffer();
-            const buffer = Buffer.from(arrayBuffer);
-            return res.status(200).send(buffer);
+            // *** FIX: Use a more robust streaming method for binary data ***
+            res.writeHead(targetResponse.status);
+            const reader = targetResponse.body.getReader();
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) {
+                    break;
+                }
+                res.write(value);
+            }
+            res.end();
+            return;
         }
 
-        // --- C. Root Welcome Route ---
+        // --- 3. Welcome Message ---
         res.setHeader('Content-Type', 'text/plain');
-        return res.status(200).send('Vercel M3U Proxy active!\n\nUse /api/proxy?channel=CHANNEL_NAME or /api/proxy?url=STREAM_URL');
+        res.status(200).send('Vercel M3U Proxy is active!\n\nUse /api/proxy?channel=CHANNEL_NAME to start a stream.');
 
     } catch (error) {
-        console.error('Serverless Proxy Error:', error);
-        return res.status(500).send('Proxy Server Error: ' + error.message);
+        console.error('Serverless Function Error:', error);
+        res.status(500).send('An internal server error occurred.');
     }
 };
 
+// This helper function remains the same.
 function rewritePlaylist(body, playlistUrl, referer, requestUrl) {
     const playlistBaseUrl = new URL(playlistUrl);
+    // Use the request URL to build the base for our proxy.
+    const proxyBaseUrl = new URL(requestUrl);
+    proxyBaseUrl.search = ''; // Start with a clean URL
 
     return body.trim().split(/\r\n|\n|\r/).map(line => {
         line = line.trim();
         if (!line) return '';
 
+        // If the line is a URL (doesn't start with #)
         if (!line.startsWith('#')) {
             const absoluteUrl = new URL(line, playlistBaseUrl).href;
-            const proxyUrl = new URL(requestUrl);
+            const proxyUrl = new URL(proxyBaseUrl.toString());
             proxyUrl.searchParams.set('url', absoluteUrl);
             if (referer) {
                 proxyUrl.searchParams.set('referer', referer);
@@ -147,10 +139,11 @@ function rewritePlaylist(body, playlistUrl, referer, requestUrl) {
             return proxyUrl.toString();
         }
         
+        // If the line has a URI attribute, rewrite that.
         const uriMatch = line.match(/URI="([^"]+)"/);
         if (uriMatch && uriMatch[1]) {
             const absoluteUri = new URL(uriMatch[1], playlistBaseUrl).href;
-            const proxyUrl = new URL(requestUrl);
+            const proxyUrl = new URL(proxyBaseUrl.toString());
             proxyUrl.searchParams.set('url', absoluteUri);
             if (referer) {
                 proxyUrl.searchParams.set('referer', referer);
@@ -158,6 +151,7 @@ function rewritePlaylist(body, playlistUrl, referer, requestUrl) {
             return line.replace(uriMatch[1], proxyUrl.toString());
         }
 
+        // Otherwise, return the line as is.
         return line;
     }).join('\n');
 }
